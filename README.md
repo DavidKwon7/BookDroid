@@ -1,6 +1,5 @@
 # BookDroid
 
-<h1>북드로이드</h1>
 
 사용한 기술 : Retrofit, glide , recyclerView
 
