@@ -6,11 +6,15 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.widget.LinearLayout
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.room.Room
 import com.example.bookdroid.adapter.BookAdapter
+import com.example.bookdroid.adapter.HistoryAdapter
 import com.example.bookdroid.api.BookService
 import com.example.bookdroid.databinding.ActivityMainBinding
 import com.example.bookdroid.model.BestSellerDTO
+import com.example.bookdroid.model.History
 import com.example.bookdroid.model.SearchBookDTO
 import com.google.gson.Gson
 import retrofit2.Call
@@ -24,7 +28,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     //지역 변수를 전역 변수로 바꿔주기
     private lateinit var adapter: BookAdapter
+    private lateinit var historyAdapter: HistoryAdapter
     private lateinit var bookService: BookService
+
+    private lateinit var db : AppDatabase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +40,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         initBookRecyclerView()
+        initHistoryRecyclerView()
+
+        db = Room.databaseBuilder(applicationContext,
+        AppDatabase::class.java,
+        "BookSearchDB").build()
 
         val retrofit = Retrofit.Builder()
             .baseUrl("https://book.interpark.com")
@@ -68,14 +80,7 @@ class MainActivity : AppCompatActivity() {
 
             })
 
-        binding.searchEditText.setOnKeyListener { v, keyCode, event ->
-            if (keyCode == KeyEvent.KEYCODE_ENTER && event.action == MotionEvent.ACTION_DOWN){
-                search(binding.searchEditText.text.toString())
-                return@setOnKeyListener true
-            }
-            //이벤트가 처리가 안 되었음.
-            else return@setOnKeyListener true
-        }
+
     }
 
     private fun search(keyword:String){
@@ -85,6 +90,10 @@ class MainActivity : AppCompatActivity() {
                     call: Call<SearchBookDTO>,
                     response: Response<SearchBookDTO>
                 ) {
+
+                    hideHistoryView()
+                    saveSearchKeyword(keyword)
+
                     if (response.isSuccessful.not()){
                         return
                     }
@@ -101,17 +110,56 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onFailure(call: Call<SearchBookDTO>, t: Throwable) {
-                    TODO("Not yet implemented")
-                }
+                    hideHistoryView()                }
 
             })
     }
 
-    fun initBookRecyclerView(){
+    private fun initBookRecyclerView(){
         adapter = BookAdapter()
 
         binding.bookRecyclerView.layoutManager = LinearLayoutManager(this)
         binding.bookRecyclerView.adapter = adapter
+    }
+
+    private fun initHistoryRecyclerView(){
+        historyAdapter = HistoryAdapter(historyDeleteClickedListener =  {
+            deleteSearchKeyword(it)
+        })
+
+        binding.historyRecyclerView.layoutManager = LinearLayoutManager(this)
+        binding.historyRecyclerView.adapter = historyAdapter
+
+
+    }
+
+    private fun showHistoryView() {
+        Thread{
+            val keywords = db.historyDao().getAll().reversed()
+
+            runOnUiThread{
+                binding.historyRecyclerView.isVisible = true
+                historyAdapter.submitList(keywords.orEmpty())
+            }
+        }.start()
+        binding.historyRecyclerView.isVisible = true
+    }
+
+    private fun hideHistoryView() {
+        binding.historyRecyclerView.isVisible = false
+    }
+
+    private fun saveSearchKeyword(keyword: String){
+        Thread{
+            db.historyDao().insertHistory(History(null, keyword))
+        }.start()
+    }
+
+    private fun deleteSearchKeyword(keyword: String){
+        Thread{
+            db.historyDao().delete(keyword)
+            showHistoryView()
+        }.start()
     }
 
     //계속 쓰일거면 companion object로 만들어둠
